@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { z } from "zod";
 
 const SectionRatingSchema = z.object({
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
         const { data: { user } } = await supabase.auth.getUser();
 
         // Get reading database ID
-        const { data: reading } = await supabase
+        const { data: reading } = await createAdminClient()
             .from('readings')
             .select('id')
             .eq('reading_id', feedback.readingId)
@@ -127,7 +128,7 @@ export async function GET(req: NextRequest) {
         const { data: { user } } = await supabase.auth.getUser();
 
         // Get reading database ID
-        const { data: reading } = await supabase
+        const { data: reading } = await createAdminClient()
             .from('readings')
             .select('id')
             .eq('reading_id', readingId)

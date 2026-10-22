@@ -5,7 +5,7 @@
 
 import { v4 as uuidv4 } from "uuid";
 import type { StoredReading, StealthStoredReading, UserInput, ReadingResponse, StealthReadingResponse } from "./types";
-import { createClient } from "./supabase/server";
+import { createAdminClient } from "./supabase/admin";
 import { trackAnalyticsEvent } from "./supabase/analytics";
 
 /**
@@ -21,7 +21,7 @@ export async function saveReading(
     userId?: string | null
 ): Promise<string> {
     const readingId = uuidv4();
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase.from("readings").insert({
         reading_id: readingId,
@@ -72,7 +72,7 @@ export async function getReading(
     readingId: string
 ): Promise<StoredReading | null> {
     console.log(`[Storage] Attempting to retrieve reading: ${readingId}`);
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase
         .from("readings")
@@ -120,49 +120,6 @@ export async function getReading(
 }
 
 /**
- * Get all readings for a specific user
- * @param userId - User ID
- * @returns Array of stored readings
- */
-export async function getUserReadings(
-    userId: string
-): Promise<StoredReading[]> {
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-        .from("readings")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
-
-    if (error || !data) {
-        console.error("[Storage] Failed to fetch user readings:", error);
-        return [];
-    }
-
-    return data.map((record) => ({
-        readingId: record.reading_id,
-        inputs: {
-            name: record.name,
-            birthDate: record.birth_date,
-            birthTime: record.birth_time || undefined,
-            birthCity: record.birth_city,
-            focusArea: record.focus_area || undefined,
-        },
-        reading: {
-            headline: record.headline,
-            coreTheme: record.core_theme,
-            strengths: record.strengths,
-            frictions: record.watch_outs,
-            next7Days: record.next_7_days,
-            journalPrompt: record.journal_prompt,
-            disclaimer: record.disclaimer,
-        },
-        timestamp: new Date(record.created_at).getTime(),
-    }));
-}
-
-/**
  * Save a journal response to Supabase
  * @param readingId - Reading ID (UUID from database)
  * @param journalPrompt - The journal prompt question
@@ -177,7 +134,7 @@ export async function saveJournalResponse(
     answer?: string,
     isCustom: boolean = false
 ): Promise<void> {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
     // First, get the database UUID for this reading_id
     const { data: reading } = await supabase
@@ -218,46 +175,6 @@ export async function saveJournalResponse(
     });
 }
 
-/**
- * Get all readings (for debugging/admin purposes)
- * @returns Array of all stored readings
- */
-export async function getAllReadings(): Promise<StoredReading[]> {
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-        .from("readings")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100);
-
-    if (error || !data) {
-        console.error("[Storage] Failed to fetch all readings:", error);
-        return [];
-    }
-
-    return data.map((record) => ({
-        readingId: record.reading_id,
-        inputs: {
-            name: record.name,
-            birthDate: record.birth_date,
-            birthTime: record.birth_time || undefined,
-            birthCity: record.birth_city,
-            focusArea: record.focus_area || undefined,
-        },
-        reading: {
-            headline: record.headline,
-            coreTheme: record.core_theme,
-            strengths: record.strengths,
-            frictions: record.watch_outs,
-            next7Days: record.next_7_days,
-            journalPrompt: record.journal_prompt,
-            disclaimer: record.disclaimer,
-        },
-        timestamp: new Date(record.created_at).getTime(),
-    }));
-}
-
 // ============================================================
 // Stealth Mode Storage Functions
 // ============================================================
@@ -271,7 +188,7 @@ export async function saveStealthReading(
     userId?: string | null
 ): Promise<string> {
     const readingId = uuidv4();
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase.from("stealth_readings").insert({
         reading_id: readingId,
@@ -318,7 +235,7 @@ export async function getStealthReading(
     readingId: string
 ): Promise<StealthStoredReading | null> {
     console.log(`[Storage] Attempting to retrieve stealth reading: ${readingId}`);
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase
         .from("stealth_readings")
