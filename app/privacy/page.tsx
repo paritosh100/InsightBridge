@@ -38,7 +38,7 @@ export default function PrivacyPage() {
                 <p>These providers process data on our behalf and may do so outside your country.</p>
 
                 <h2>Retention and your rights</h2>
-                <p>Saved readings are kept until you ask us to delete them. Depending on where you live, you may have the right to access, correct, export or delete your data, to withdraw consent, and to complain to a regulator. To use any of these, email <a className="underline" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. We aim to respond within 30 days.</p>
+                <p>Saved readings are kept until you delete them. You can download a copy of your data or permanently delete your account and readings at any time from your <Link href="/account" className="underline">Account page</Link>; deletion takes effect immediately. Depending on where you live, you may also have the right to correct your data, withdraw consent, and complain to a regulator. For anything else, email <a className="underline" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. We aim to respond within 30 days.</p>
 
                 <h2>Children</h2>
                 <p>InsightBridge is not intended for children under 16. Do not use it if you are under 16.</p>

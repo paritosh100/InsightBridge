@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,9 @@ export function UserMenu({ user }: UserMenuProps) {
 
                 <span className="font-medium">{user.email}</span>
             </div>
+            <Link href="/account" className="text-sm text-[#666] hover:text-[#1a1a1a] underline-offset-2 hover:underline">
+                Account
+            </Link>
             <Button
                 onClick={handleLogout}
                 disabled={isLoading}
