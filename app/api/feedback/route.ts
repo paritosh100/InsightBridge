@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Track analytics event
-        await supabase.from('analytics_events').insert({
+        await createAdminClient().from('analytics_events').insert({
             event_type: 'feedback_submitted',
             reading_id: reading.id,
             user_id: user?.id || null,
