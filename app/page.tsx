@@ -138,6 +138,11 @@ export default function HomePage() {
         body: JSON.stringify(payload),
       });
 
+      if (response.status === 401) {
+        router.push("/login?redirect=/");
+        return;
+      }
+
       const data = await response.json();
 
       if (!response.ok) {

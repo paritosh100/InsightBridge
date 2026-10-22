@@ -34,10 +34,15 @@ export async function POST(request: NextRequest) {
     try {
         console.log('[API] Received generate-reading request');
 
-        // Get authenticated user (optional - allows anonymous readings)
+        // Readings are only generated and saved for signed-in users
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
-        console.log(`[API] User authenticated: ${!!user}`);
+        if (!user) {
+            return NextResponse.json<GenerateReadingError>(
+                { error: "Sign in to generate a reading" },
+                { status: 401 }
+            );
+        }
 
         // Parse request body
         const body = await request.json();
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest) {
                 console.log('[API] Stealth generation successful');
 
                 console.log('[API] Saving stealth reading to Supabase...');
-                readingId = await saveStealthReading(inputs, stealthReading, user?.id);
+                readingId = await saveStealthReading(inputs, stealthReading, user.id);
                 console.log(`[API] Stealth reading saved with ID: ${readingId}`);
             } catch (generationError) {
                 console.error('[API] Stealth generation failed:', generationError);
@@ -99,7 +104,7 @@ export async function POST(request: NextRequest) {
                 }
 
                 console.log('[API] Saving reading to Supabase...');
-                readingId = await saveReading(inputs, reading, user?.id);
+                readingId = await saveReading(inputs, reading, user.id);
                 console.log(`[API] Reading saved with ID: ${readingId}`);
             } catch (generationError) {
                 console.error(`[API] ${backendName} generation failed:`, generationError);
