@@ -12,6 +12,7 @@ import { generateReading, generateStealthReading } from "@/lib/openai";
 import { generateReadingWithADK } from "@/lib/adk-client";
 import { saveReading, saveStealthReading } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { TEMP_READING_ID } from "@/lib/types";
 import type { UserInput, GenerateReadingResponse, GenerateReadingError, ReadingResponse, StealthReadingResponse } from "@/lib/types";
 
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
         console.log(`[API] User authenticated: ${!!user}`);
+
+        const limited = rateLimit(request, "generate-reading", 10, 10 * 60_000, user?.id);
+        if (limited) return limited;
 
         // Parse request body
         const body = await request.json();

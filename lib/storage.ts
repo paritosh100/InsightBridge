@@ -303,3 +303,16 @@ export async function getAnyReading(
 
     return null;
 }
+
+/**
+ * Owner of a stored reading (normal or stealth).
+ * Returns undefined if the reading does not exist, null if it has no owner.
+ */
+export async function getReadingOwner(readingId: string): Promise<string | null | undefined> {
+    const supabase = createAdminClient();
+    for (const table of ["readings", "stealth_readings"]) {
+        const { data } = await supabase.from(table).select("user_id").eq("reading_id", readingId).maybeSingle();
+        if (data) return data.user_id;
+    }
+    return undefined;
+}

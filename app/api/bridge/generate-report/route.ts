@@ -5,6 +5,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { createClient } from "@/lib/supabase/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { generateBridgeReport } from "@/lib/bridge";
 import type { BridgeGenerateReportResponse } from "@/lib/bridge-types";
 
@@ -21,6 +23,15 @@ const BridgeQuestionnaireSchema = z.object({
 
 export async function POST(request: NextRequest) {
     try {
+        // The Bridge flow is sign-in only (see app/behavioral-patterns/page.tsx)
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+        }
+        const limited = rateLimit(request, "bridge-generate-report", 10, 10 * 60_000, user.id);
+        if (limited) return limited;
+
         const body = await request.json();
         const validation = BridgeQuestionnaireSchema.safeParse(body);
 
