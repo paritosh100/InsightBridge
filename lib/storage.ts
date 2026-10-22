@@ -105,6 +105,7 @@ export async function getReading(
             disclaimer: data.disclaimer,
         },
         timestamp: new Date(data.created_at).getTime(),
+        ownerId: data.user_id,
     };
 
     console.log(`[Storage] Reading found: ${readingId}`);
@@ -267,6 +268,7 @@ export async function getStealthReading(
         },
         timestamp: new Date(data.created_at).getTime(),
         mode: 'stealth',
+        ownerId: data.user_id,
     };
 
     console.log(`[Storage] Stealth reading found: ${readingId}`);

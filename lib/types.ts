@@ -46,6 +46,7 @@ export interface StoredReading {
   reading: ReadingResponse;
   timestamp: number;
   mode?: ReadingMode;
+  ownerId?: string | null;
 }
 
 // Stored reading data — stealth mode
@@ -55,6 +56,7 @@ export interface StealthStoredReading {
   reading: StealthReadingResponse;
   timestamp: number;
   mode: 'stealth';
+  ownerId?: string | null;
 }
 
 // API response types

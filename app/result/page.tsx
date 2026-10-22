@@ -6,6 +6,7 @@
 
 import { notFound } from "next/navigation";
 import { getAnyReading } from "@/lib/storage";
+import { createClient } from "@/lib/supabase/server";
 import { ResultClient } from "@/components/result-client";
 import { StealthResultClient } from "@/components/stealth-result-client";
 
@@ -30,6 +31,16 @@ export default async function ResultPage({ searchParams }: ResultPageProps) {
 
     if (!storedReading) {
         notFound();
+    }
+
+    // Readings saved by a signed-in user are private to them; anonymous
+    // readings stay viewable by link.
+    if (storedReading.ownerId) {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id !== storedReading.ownerId) {
+            notFound();
+        }
     }
 
     return (

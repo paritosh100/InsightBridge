@@ -3,10 +3,12 @@
 -- otherwise anonymous result pages stop loading.
 
 DROP POLICY IF EXISTS "Users can view all readings" ON public.readings;
+DROP POLICY IF EXISTS "Users can view own readings" ON public.readings;
 CREATE POLICY "Users can view own readings" ON public.readings
   FOR SELECT USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Users can view all stealth readings" ON public.stealth_readings;
+DROP POLICY IF EXISTS "Users can view own stealth readings" ON public.stealth_readings;
 CREATE POLICY "Users can view own stealth readings" ON public.stealth_readings
   FOR SELECT USING (auth.uid() = user_id);
 
