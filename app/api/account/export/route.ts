@@ -11,6 +11,20 @@ import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
+// PostgREST caps a single response (default 1000 rows), so read in pages
+const PAGE = 1000;
+async function fetchAll(
+    page: (from: number, to: number) => PromiseLike<{ data: any[] | null; error: any }>
+) {
+    const rows: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await page(from, from + PAGE - 1);
+        if (error) return { data: null, error };
+        rows.push(...(data ?? []));
+        if (!data || data.length < PAGE) return { data: rows, error: null };
+    }
+}
+
 export async function GET(request: NextRequest) {
     try {
         // The user comes from the session only, never from the request
@@ -23,26 +37,18 @@ export async function GET(request: NextRequest) {
         if (limited) return limited;
 
         const db = createAdminClient();
-        const [readings, stealthReadings, feedback, votes] = await Promise.all([
-            db.from("readings").select("*").eq("user_id", user.id),
-            db.from("stealth_readings").select("*").eq("user_id", user.id),
-            db.from("reading_feedback").select("*").eq("user_id", user.id),
-            db.from("app_name_votes").select("selected_name, created_at").eq("user_id", user.id),
+        const [readings, stealthReadings, feedback, votes, events] = await Promise.all([
+            // journal answers come embedded in their reading
+            fetchAll((from, to) => db.from("readings").select("*, journal_responses(*)").eq("user_id", user.id).range(from, to)),
+            fetchAll((from, to) => db.from("stealth_readings").select("*").eq("user_id", user.id).range(from, to)),
+            fetchAll((from, to) => db.from("reading_feedback").select("*").eq("user_id", user.id).range(from, to)),
+            fetchAll((from, to) => db.from("app_name_votes").select("selected_name, reading_id, created_at").eq("user_id", user.id).range(from, to)),
+            fetchAll((from, to) => db.from("analytics_events").select("event_type, metadata, created_at").eq("user_id", user.id).range(from, to)),
         ]);
 
-        const failed = [readings, stealthReadings, feedback, votes].find((r) => r.error);
+        const failed = [readings, stealthReadings, feedback, votes, events].find((r) => r.error);
         if (failed) {
             console.error("[Account] Export query failed:", failed.error);
-            return NextResponse.json({ error: "Failed to export data" }, { status: 500 });
-        }
-
-        // Journal answers hang off the user's normal readings
-        const readingIds = (readings.data ?? []).map((r) => r.id);
-        const journal = readingIds.length
-            ? await db.from("journal_responses").select("*").in("reading_id", readingIds)
-            : { data: [], error: null };
-        if (journal.error) {
-            console.error("[Account] Export journal query failed:", journal.error);
             return NextResponse.json({ error: "Failed to export data" }, { status: 500 });
         }
 
@@ -51,9 +57,9 @@ export async function GET(request: NextRequest) {
             account: { id: user.id, email: user.email, createdAt: user.created_at },
             readings: readings.data,
             stealthReadings: stealthReadings.data,
-            journalResponses: journal.data,
             feedback: feedback.data,
             appNameVotes: votes.data,
+            activityEvents: events.data,
         };
 
         return new NextResponse(JSON.stringify(body, null, 2), {

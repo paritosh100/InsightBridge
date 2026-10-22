@@ -9,6 +9,30 @@ export function AccountActions({ email }: { email: string }) {
     const [confirmEmail, setConfirmEmail] = useState("");
     const [isDeleting, setIsDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportError, setExportError] = useState<string | null>(null);
+
+    const handleExport = async () => {
+        setIsExporting(true);
+        setExportError(null);
+        try {
+            const res = await fetch("/api/account/export");
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to export data");
+            }
+            const url = URL.createObjectURL(await res.blob());
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "insightbridge-data.json";
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            setExportError(err instanceof Error ? err.message : "Failed to export data");
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     const handleDelete = async () => {
         setIsDeleting(true);
@@ -31,7 +55,7 @@ export function AccountActions({ email }: { email: string }) {
         }
     };
 
-    const matches = confirmEmail.trim().toLowerCase() === email.toLowerCase();
+    const matches = email !== "" && confirmEmail.trim().toLowerCase() === email.toLowerCase();
 
     return (
         <div className="space-y-6">
@@ -40,15 +64,16 @@ export function AccountActions({ email }: { email: string }) {
                 <p className="text-sm text-[#666]">
                     A JSON file with your readings, journal answers, feedback and votes.
                 </p>
-                <Button asChild variant="outline" className="rounded-full">
-                    <a href="/api/account/export" download>Download my data</a>
+                {exportError && <p className="text-sm text-red-700">{exportError}</p>}
+                <Button onClick={handleExport} disabled={isExporting} variant="outline" className="rounded-full">
+                    {isExporting ? "Preparing..." : "Download my data"}
                 </Button>
             </section>
 
             <section className="rounded-2xl border border-red-200 bg-white p-6 space-y-3">
                 <h2 className="text-lg font-semibold text-red-700">Delete your account</h2>
                 <p className="text-sm text-[#666]">
-                    This immediately and permanently deletes your account, readings, journal answers and feedback.
+                    This immediately and permanently deletes your account, readings, journal answers, feedback, votes and activity records.
                     It cannot be undone. Type your email <strong>{email}</strong> to confirm.
                 </p>
                 <input

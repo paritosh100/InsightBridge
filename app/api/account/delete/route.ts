@@ -24,9 +24,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Sign in required" }, { status: 401 });
         }
 
-        const limited = rateLimit(request, "account-delete", 3, 10 * 60_000, user.id);
-        if (limited) return limited;
-
         const parsed = DeleteSchema.safeParse(await request.json().catch(() => null));
         if (!parsed.success || !user.email ||
             parsed.data.email.trim().toLowerCase() !== user.email.toLowerCase()) {
@@ -36,26 +33,34 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Only count attempts that pass the confirmation, so typos never lock the user out
+        const limited = rateLimit(request, "account-delete", 3, 10 * 60_000, user.id);
+        if (limited) return limited;
+
         const db = createAdminClient();
 
-        // Feedback this user left on any reading (feedback on their own readings cascades below)
-        const feedback = await db.from("reading_feedback").delete().eq("user_id", user.id);
-        // Deleting the profile row cascades to readings, stealth_readings, journal_responses;
-        // analytics_events and app_name_votes keep their rows with user_id cleared.
-        const profile = await db.from("users").delete().eq("id", user.id);
-        if (feedback.error || profile.error) {
-            console.error("[Account] Delete data failed:", feedback.error ?? profile.error);
+        // Rows that would otherwise survive with only user_id cleared
+        const leftovers = await Promise.all([
+            db.from("reading_feedback").delete().eq("user_id", user.id),
+            db.from("analytics_events").delete().eq("user_id", user.id),
+            db.from("app_name_votes").delete().eq("user_id", user.id),
+        ]);
+        const leftoverError = leftovers.find((r) => r.error)?.error;
+        if (leftoverError) {
+            console.error("[Account] Delete data failed:", leftoverError);
             return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
         }
 
+        // One step for the rest: migration 007 cascades the auth user to the profile row, readings,
+        // stealth_readings, journal_responses and feedback on them.
         const { error: authError } = await db.auth.admin.deleteUser(user.id);
         if (authError) {
-            // Data is already gone; the user can retry to remove the login
             console.error("[Account] Delete auth user failed:", authError);
             return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
         }
 
-        await supabase.auth.signOut().catch(() => undefined);
+        // Clear this browser's cookies; the session is already invalid server-side
+        await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error("[Account] Delete error:", error);
