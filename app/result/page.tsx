@@ -5,6 +5,7 @@
  */
 
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { getAnyReading } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { ResultClient } from "@/components/result-client";
@@ -39,7 +40,31 @@ export default async function ResultPage({ searchParams }: ResultPageProps) {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (user?.id !== storedReading.ownerId) {
-            notFound();
+            const signedIn = !!user;
+            return (
+                <div className="min-h-screen w-full bg-[#fafaf8] text-[#1a2f2a] flex items-center justify-center px-6">
+                    <div className="max-w-md text-center space-y-4">
+                        <h1 className="text-2xl font-semibold">
+                            {signedIn ? "This reading doesn't belong to you" : "Sign in to view this reading"}
+                        </h1>
+                        <p className="text-[#1a2f2a]/70">
+                            {signedIn
+                                ? "It was created by another account, so only its owner can open it."
+                                : "This reading is private to the account that created it."}
+                        </p>
+                        <div className="flex justify-center gap-3 pt-2">
+                            {!signedIn && (
+                                <Link href={`/login?redirect=${encodeURIComponent(`/result?rid=${readingId}`)}`} className="rounded-md bg-[#4a7c59] px-4 py-2 text-sm font-medium text-white hover:bg-[#3d6b4a]">
+                                    Sign in
+                                </Link>
+                            )}
+                            <Link href="/" className="rounded-md border border-[#1a2f2a]/20 px-4 py-2 text-sm font-medium hover:bg-black/5">
+                                Get your own reading
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            );
         }
     }
 
