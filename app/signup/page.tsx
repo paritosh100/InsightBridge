@@ -12,7 +12,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { cn, safeRedirectPath } from "@/lib/utils";
 
 export default function SignupPage() {
     return (
@@ -35,7 +35,7 @@ export default function SignupPage() {
 function SignupPageInner() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const redirectTo = searchParams.get("redirect") || "/";
+    const redirectTo = safeRedirectPath(searchParams.get("redirect"));
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
