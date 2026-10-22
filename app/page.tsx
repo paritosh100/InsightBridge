@@ -17,6 +17,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { TEMP_READING_KEY } from "@/lib/types";
+import { CONTACT_EMAIL } from "@/lib/legal";
+import { ConsentCheckbox } from "@/components/consent-checkbox";
 
 
 // --- Page Component ---
@@ -49,6 +51,7 @@ function smoothScrollTo(elementId: string, duration = 900) {
 export default function HomePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [consented, setConsented] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
 
@@ -492,10 +495,12 @@ export default function HomePage() {
               )}
             </AnimatePresence>
 
+            <ConsentCheckbox checked={consented} onChange={setConsented} subject="my name and birth details" />
+
             {/* Submit */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !consented}
               className={cn(
                 "w-full py-4 rounded-full text-base font-medium transition-all duration-200 shadow-sm",
                 "bg-[#3d6b4a] text-white hover:bg-[#2f5a3c] hover:shadow-md",
@@ -750,11 +755,9 @@ export default function HomePage() {
         <div className="max-w-[1200px] mx-auto px-6 md:px-10 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-[#999]">© 2024 InsightBridge. All rights reserved.</p>
           <div className="flex items-center gap-6">
-            {["Privacy", "Terms", "Contact"].map((link) => (
-              <a key={link} href="#" className="text-sm text-[#999] hover:text-[#555] transition-colors duration-200">
-                {link}
-              </a>
-            ))}
+            <Link href="/privacy" className="text-sm text-[#999] hover:text-[#555] transition-colors duration-200">Privacy</Link>
+            <Link href="/terms" className="text-sm text-[#999] hover:text-[#555] transition-colors duration-200">Terms</Link>
+            <a href={`mailto:${CONTACT_EMAIL}`} className="text-sm text-[#999] hover:text-[#555] transition-colors duration-200">Contact</a>
           </div>
         </div>
       </footer>
