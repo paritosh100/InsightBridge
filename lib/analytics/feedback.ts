@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export interface FeedbackMetrics {
     totalFeedback: number;
@@ -92,7 +93,7 @@ function extractTopIssues(feedbackTexts: string[]): string[] {
 export async function getReadingFeedback(readingId: string) {
     const supabase = await createClient();
 
-    const { data: reading } = await supabase
+    const { data: reading } = await createAdminClient()
         .from('readings')
         .select('id')
         .eq('reading_id', readingId)

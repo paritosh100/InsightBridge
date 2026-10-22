@@ -28,9 +28,9 @@ CREATE INDEX IF NOT EXISTS idx_stealth_readings_created_at ON public.stealth_rea
 ALTER TABLE public.stealth_readings ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies (mirror the readings table policies)
-DROP POLICY IF EXISTS "Users can view all stealth readings" ON public.stealth_readings;
-CREATE POLICY "Users can view all stealth readings" ON public.stealth_readings
-  FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Users can view own stealth readings" ON public.stealth_readings;
+CREATE POLICY "Users can view own stealth readings" ON public.stealth_readings
+  FOR SELECT USING (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Users can create own stealth readings" ON public.stealth_readings;
 CREATE POLICY "Users can create own stealth readings" ON public.stealth_readings

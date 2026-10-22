@@ -82,17 +82,21 @@ DROP POLICY IF EXISTS "Users can create analytics events" ON public.analytics_ev
 CREATE POLICY "Users can view own profile" ON public.users
   FOR SELECT USING (auth.uid() = id);
 
--- Anyone can view readings (for sharing links)
-CREATE POLICY "Users can view all readings" ON public.readings
-  FOR SELECT USING (true);
+-- Owners can view their readings. Shared/anonymous links are served by the
+-- server using the service role key, looked up by the unguessable reading_id.
+CREATE POLICY "Users can view own readings" ON public.readings
+  FOR SELECT USING (auth.uid() = user_id);
 
 -- Authenticated users can insert their own readings
 CREATE POLICY "Users can create own readings" ON public.readings
   FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
 
--- Users can view journal responses for any reading (for sharing)
+-- Users can view journal responses for their own readings
 CREATE POLICY "Users can view own journal responses" ON public.journal_responses
-  FOR SELECT USING (true);
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.readings r
+            WHERE r.id = journal_responses.reading_id AND r.user_id = auth.uid())
+  );
 
 -- Users can insert journal responses for any reading
 CREATE POLICY "Users can create journal responses" ON public.journal_responses
