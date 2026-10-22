@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { ConsentCheckbox } from "@/components/consent-checkbox";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -64,6 +65,7 @@ export default function BehavioralPatternsPage() {
     const [authChecked, setAuthChecked] = useState(false);
     const [step, setStep] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
+    const [consented, setConsented] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Auth guard — redirect unauthenticated users to login
@@ -95,7 +97,7 @@ export default function BehavioralPatternsPage() {
             case 1: return !!decisionStyle;
             case 2: return !!goalClarity;
             case 3: return !!currentState;
-            case 4: return stuckDescription.trim().length >= 10;
+            case 4: return stuckDescription.trim().length >= 10 && consented;
             default: return false;
         }
     }
@@ -369,6 +371,12 @@ export default function BehavioralPatternsPage() {
                         </AnimatePresence>
 
                         {/* Navigation */}
+                        {step === totalSteps - 1 && (
+                            <div className="mt-6">
+                                <ConsentCheckbox checked={consented} onChange={setConsented} subject="my answers, including how I am feeling" />
+                            </div>
+                        )}
+
                         <div className="flex items-center justify-between mt-8 gap-3">
                             <button
                                 type="button"

@@ -7,6 +7,7 @@
  */
 
 import { useState, Suspense } from "react";
+import { ConsentCheckbox } from "@/components/consent-checkbox";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -39,6 +40,7 @@ function SignupPageInner() {
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [consented, setConsented] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
 
@@ -61,6 +63,7 @@ function SignupPageInner() {
                 password,
                 options: {
                     emailRedirectTo: `${siteUrl}/auth/callback`,
+                    data: { accepted_terms_at: new Date().toISOString() },
                 },
             });
 
@@ -269,10 +272,12 @@ function SignupPageInner() {
                             )}
                         </AnimatePresence>
 
+                        <ConsentCheckbox checked={consented} onChange={setConsented} subject="my account and reading data" />
+
                         {/* Submit */}
                         <button
                             type="submit"
-                            disabled={isLoading}
+                            disabled={isLoading || !consented}
                             className={cn(
                                 "w-full py-3 rounded-full text-sm font-medium transition-all duration-200 shadow-sm mt-1",
                                 "bg-[#3d6b4a] text-white hover:bg-[#2f5a3c] hover:shadow-md",
