@@ -22,10 +22,7 @@ ALTER TABLE public.app_name_votes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Anyone can insert app name votes" ON public.app_name_votes;
 DROP POLICY IF EXISTS "Anyone can view app name vote counts" ON public.app_name_votes;
 
--- Anyone can insert votes (anonymous or authenticated)
-CREATE POLICY "Anyone can insert app name votes" ON public.app_name_votes
-  FOR INSERT WITH CHECK (true);
-
--- Anyone can view aggregated vote counts (for analytics)
-CREATE POLICY "Anyone can view app name vote counts" ON public.app_name_votes
-  FOR SELECT USING (true);
+-- No policies: votes are written and counted only by the server (service role key).
+-- One vote per user or per session (hashed IP).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_app_name_votes_user ON public.app_name_votes(user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_app_name_votes_session ON public.app_name_votes(session_id) WHERE session_id IS NOT NULL;

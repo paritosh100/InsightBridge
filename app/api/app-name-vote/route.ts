@@ -4,7 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { rateLimit } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
     try {
@@ -19,44 +22,34 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const supabase = await createClient();
-
         // Get user ID if authenticated
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await (await createClient()).auth.getUser();
 
-        // Generate or get session ID for anonymous users
-        const sessionId = request.cookies.get('session_id')?.value ||
-            crypto.randomUUID();
+        const limited = rateLimit(request, 'app-name-vote', 5, 10 * 60_000, user?.id);
+        if (limited) return limited;
 
-        // Check if this session/user has already voted
-        let existingVoteQuery = supabase
-            .from('app_name_votes')
-            .select('id');
+        // Signed-out voters are identified by a keyed hash of their IP, not a cookie they can delete.
+        // Shared networks (office, school) therefore share one vote.
+        const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+        const sessionId = createHmac('sha256', process.env.SUPABASE_SERVICE_ROLE_KEY!).update(ip).digest('hex');
 
-        if (user) {
-            existingVoteQuery = existingVoteQuery.eq('user_id', user.id);
-        } else {
-            existingVoteQuery = existingVoteQuery.eq('session_id', sessionId);
-        }
-
-        const { data: existingVote } = await existingVoteQuery.single();
-
-        if (existingVote) {
-            return NextResponse.json(
-                { error: 'You have already voted' },
-                { status: 409 }
-            );
-        }
-
-        // Insert the vote
+        // One vote per user or per IP; unique indexes (migration 006) also enforce this under races
+        const supabase = createAdminClient();
         const { error } = await supabase
             .from('app_name_votes')
             .insert({
                 user_id: user?.id || null,
                 session_id: user ? null : sessionId,
                 selected_name: selectedName,
-                reading_id: readingId || null,
+                reading_id: typeof readingId === 'string' ? readingId.slice(0, 64) : null,
             });
+
+        if (error?.code === '23505') {
+            return NextResponse.json(
+                { error: 'You have already voted' },
+                { status: 409 }
+            );
+        }
 
         if (error) {
             console.error('Error saving vote:', error);
@@ -66,18 +59,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Set session cookie for anonymous users
-        const response = NextResponse.json({ success: true });
-        if (!user) {
-            response.cookies.set('session_id', sessionId, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
-                maxAge: 60 * 60 * 24 * 365, // 1 year
-            });
-        }
-
-        return response;
+        return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error in app name vote API:', error);
         return NextResponse.json(
@@ -90,7 +72,7 @@ export async function POST(request: NextRequest) {
 // GET endpoint to retrieve vote counts
 export async function GET() {
     try {
-        const supabase = await createClient();
+        const supabase = createAdminClient();
 
         const { data: votes, error } = await supabase
             .from('app_name_votes')

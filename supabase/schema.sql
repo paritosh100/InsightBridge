@@ -87,10 +87,6 @@ CREATE POLICY "Users can view own profile" ON public.users
 CREATE POLICY "Users can view own readings" ON public.readings
   FOR SELECT USING (auth.uid() = user_id);
 
--- Authenticated users can insert their own readings
-CREATE POLICY "Users can create own readings" ON public.readings
-  FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
-
 -- Users can view journal responses for their own readings
 CREATE POLICY "Users can view own journal responses" ON public.journal_responses
   FOR SELECT USING (
@@ -98,13 +94,8 @@ CREATE POLICY "Users can view own journal responses" ON public.journal_responses
             WHERE r.id = journal_responses.reading_id AND r.user_id = auth.uid())
   );
 
--- Users can insert journal responses for any reading
-CREATE POLICY "Users can create journal responses" ON public.journal_responses
-  FOR INSERT WITH CHECK (true);
-
--- Analytics events (insert only, no read access for users)
-CREATE POLICY "Users can create analytics events" ON public.analytics_events
-  FOR INSERT WITH CHECK (true);
+-- No INSERT policies: readings, journal_responses and analytics_events are written
+-- only by server code using the service role key (RLS denies anon/authenticated writes).
 
 -- Function to handle user creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()

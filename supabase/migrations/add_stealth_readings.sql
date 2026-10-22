@@ -32,9 +32,8 @@ DROP POLICY IF EXISTS "Users can view own stealth readings" ON public.stealth_re
 CREATE POLICY "Users can view own stealth readings" ON public.stealth_readings
   FOR SELECT USING (auth.uid() = user_id);
 
+-- No INSERT policy: stealth readings are written only by the server (service role key).
 DROP POLICY IF EXISTS "Users can create own stealth readings" ON public.stealth_readings;
-CREATE POLICY "Users can create own stealth readings" ON public.stealth_readings
-  FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
 
 -- Trigger to auto-update updated_at
 DROP TRIGGER IF EXISTS set_updated_at ON public.stealth_readings;

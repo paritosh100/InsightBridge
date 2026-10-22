@@ -3,7 +3,7 @@
  * Track user events for insights and improvements
  */
 
-import { createClient } from './server'
+import { createAdminClient } from './admin'
 
 export type AnalyticsEventType =
     | 'reading_generated'
@@ -25,7 +25,7 @@ interface AnalyticsEventData {
 
 export async function trackAnalyticsEvent(data: AnalyticsEventData) {
     try {
-        const supabase = await createClient()
+        const supabase = createAdminClient()
 
         const { error } = await supabase
             .from('analytics_events')
