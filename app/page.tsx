@@ -16,6 +16,7 @@ import type { ReadingMode } from "@/lib/types";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { TEMP_READING_KEY } from "@/lib/types";
 
 
 // --- Page Component ---
@@ -144,6 +145,10 @@ export default function HomePage() {
         throw new Error(data.details || data.error || "Failed to generate reading");
       }
 
+      if (data.temporary) {
+        // Signed-out reading: never stored, lives only in this tab
+        sessionStorage.setItem(TEMP_READING_KEY, JSON.stringify({ mode: data.mode, ...data.temporary }));
+      }
       router.push(`/result?rid=${data.readingId}`);
     } catch (err) {
       console.error("Form submission error:", err);

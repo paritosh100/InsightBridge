@@ -71,6 +71,9 @@ export function SectionFeedback({ section, readingId }: SectionFeedbackProps) {
         }
     };
 
+    // Temporary (signed-out) readings are not stored, so there is nothing to attach feedback to
+    if (readingId === "temp") return null;
+
     return (
         <div className="flex items-center gap-1.5 flex-wrap">
             {reactions.map(({ type, label, selectedBg, hoverBorder, hoverText }) => (
