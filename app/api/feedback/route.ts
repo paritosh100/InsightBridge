@@ -141,12 +141,16 @@ export async function GET(req: NextRequest) {
             );
         }
 
+        if (!user) {
+            return NextResponse.json({ feedback: null });
+        }
+
         // Get user's feedback for this reading
         const { data: feedbackData } = await supabase
             .from('reading_feedback')
             .select('*')
             .eq('reading_id', reading.id)
-            .eq('user_id', user?.id)
+            .eq('user_id', user.id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
