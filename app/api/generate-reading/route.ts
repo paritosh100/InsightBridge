@@ -12,7 +12,8 @@ import { generateReading, generateStealthReading } from "@/lib/openai";
 import { generateReadingWithADK } from "@/lib/adk-client";
 import { saveReading, saveStealthReading } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
-import type { UserInput, GenerateReadingResponse, GenerateReadingError } from "@/lib/types";
+import { TEMP_READING_ID } from "@/lib/types";
+import type { UserInput, GenerateReadingResponse, GenerateReadingError, ReadingResponse, StealthReadingResponse } from "@/lib/types";
 
 // Force dynamic rendering (required for Vercel deployment)
 export const dynamic = "force-dynamic";
@@ -63,6 +64,8 @@ export async function POST(request: NextRequest) {
         console.log(`[API] Inputs validated successfully, mode: ${mode}`);
 
         let readingId: string;
+        // Signed-out users get a temporary reading: returned to the browser, never stored
+        let temporary: StealthReadingResponse | ReadingResponse | undefined;
 
         if (mode === 'stealth') {
             // Stealth mode: pattern-based reflection, no astrological language
@@ -72,7 +75,12 @@ export async function POST(request: NextRequest) {
                 console.log('[API] Stealth generation successful');
 
                 console.log('[API] Saving stealth reading to Supabase...');
-                readingId = await saveStealthReading(inputs, stealthReading, user?.id);
+                if (user) {
+                    readingId = await saveStealthReading(inputs, stealthReading, user.id);
+                } else {
+                    readingId = TEMP_READING_ID;
+                    temporary = stealthReading;
+                }
                 console.log(`[API] Stealth reading saved with ID: ${readingId}`);
             } catch (generationError) {
                 console.error('[API] Stealth generation failed:', generationError);
@@ -99,7 +107,12 @@ export async function POST(request: NextRequest) {
                 }
 
                 console.log('[API] Saving reading to Supabase...');
-                readingId = await saveReading(inputs, reading, user?.id);
+                if (user) {
+                    readingId = await saveReading(inputs, reading, user.id);
+                } else {
+                    readingId = TEMP_READING_ID;
+                    temporary = reading;
+                }
                 console.log(`[API] Reading saved with ID: ${readingId}`);
             } catch (generationError) {
                 console.error(`[API] ${backendName} generation failed:`, generationError);
@@ -115,7 +128,7 @@ export async function POST(request: NextRequest) {
 
         // Return success response
         return NextResponse.json<GenerateReadingResponse>(
-            { readingId, mode },
+            temporary ? { readingId, mode, temporary: { inputs, reading: temporary } } : { readingId, mode },
             { status: 200 }
         );
 

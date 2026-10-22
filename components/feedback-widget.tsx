@@ -50,6 +50,9 @@ export function FeedbackWidget({ readingId }: FeedbackWidgetProps) {
         );
     }
 
+    // Temporary (signed-out) readings are not stored, so there is nothing to attach feedback to
+    if (readingId === "temp") return null;
+
     return (
         <div className="space-y-6">
             {/* Overall Rating */}

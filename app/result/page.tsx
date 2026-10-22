@@ -9,6 +9,8 @@ import Link from "next/link";
 import { getAnyReading } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { ResultClient } from "@/components/result-client";
+import { TempResult } from "@/components/temp-result";
+import { TEMP_READING_ID } from "@/lib/types";
 import { StealthResultClient } from "@/components/stealth-result-client";
 
 // Force dynamic rendering (required for Vercel deployment)
@@ -25,6 +27,15 @@ export default async function ResultPage({ searchParams }: ResultPageProps) {
     // Validate reading ID
     if (!readingId) {
         notFound();
+    }
+
+    // Signed-out readings are never stored; the browser renders them from sessionStorage
+    if (readingId === TEMP_READING_ID) {
+        return (
+            <div className="relative min-h-screen w-full overflow-hidden bg-[#fafaf8] text-[#1a2f2a]">
+                <div className="relative z-10"><TempResult /></div>
+            </div>
+        );
     }
 
     // Fetch reading from either table

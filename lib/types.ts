@@ -60,9 +60,15 @@ export interface StealthStoredReading {
 }
 
 // API response types
+// Id used for signed-out readings that are never stored (kept in sessionStorage)
+export const TEMP_READING_ID = "temp";
+export const TEMP_READING_KEY = "tempReading";
+
 export interface GenerateReadingResponse {
   readingId: string;
   mode?: ReadingMode;
+  // Present only for temporary (signed-out) readings
+  temporary?: { inputs: UserInput; reading: ReadingResponse | StealthReadingResponse };
 }
 
 export interface GenerateReadingError {

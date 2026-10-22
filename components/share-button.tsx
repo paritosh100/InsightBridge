@@ -21,6 +21,9 @@ export function ShareButton() {
         }
     };
 
+    // Temporary readings live only in this tab, so there is nothing to share
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("rid") === "temp") return null;
+
     return (
         <Button
             onClick={handleShare}
