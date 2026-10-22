@@ -5,6 +5,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { createClient } from "@/lib/supabase/server";
+import { rateLimit } from "@/lib/rate-limit";
 import { bridgeChat } from "@/lib/bridge";
 import type { BridgeChatResponse } from "@/lib/bridge-types";
 
@@ -17,28 +19,37 @@ const BridgeChatSchema = z.object({
         decisionStyle: z.enum(["analytical", "intuitive", "collaborative", "avoidant"]),
         goalClarity: z.enum(["crystal_clear", "mostly_clear", "foggy", "no_goals"]),
         currentState: z.enum(["stuck", "overwhelmed", "restless", "numb", "conflicted"]),
-        stuckDescription: z.string(),
-        name: z.string().optional(),
+        stuckDescription: z.string().max(500),
+        name: z.string().max(100).optional(),
     }),
     reportData: z.object({
-        coreTheme: z.string(),
-        pastPattern: z.string(),
-        currentPhase: z.string(),
-        emergingDirection: z.string(),
-        plusQuestion: z.string(),
-        plusAnswer: z.string(),
+        coreTheme: z.string().max(3000),
+        pastPattern: z.string().max(3000),
+        currentPhase: z.string().max(3000),
+        emergingDirection: z.string().max(3000),
+        plusQuestion: z.string().max(3000),
+        plusAnswer: z.string().max(3000),
     }),
     chatHistory: z.array(
         z.object({
             role: z.enum(["bridge", "user"]),
-            content: z.string(),
+            content: z.string().max(3000),
         })
-    ),
-    questionCount: z.number().int().min(0),
+    ).max(30),
+    questionCount: z.number().int().min(0).max(100),
 });
 
 export async function POST(request: NextRequest) {
     try {
+        // The Bridge flow is sign-in only (see app/behavioral-patterns/page.tsx)
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+        }
+        const limited = rateLimit(request, "bridge-chat", 30, 10 * 60_000, user.id);
+        if (limited) return limited;
+
         const body = await request.json();
         const validation = BridgeChatSchema.safeParse(body);
 

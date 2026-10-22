@@ -6,7 +6,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { answerPromptWithADK } from "@/lib/adk-client";
-import { saveJournalResponse } from "@/lib/storage";
+import { z } from "zod";
+import { saveJournalResponse, getReadingOwner } from "@/lib/storage";
+import { createClient } from "@/lib/supabase/server";
+import { rateLimit } from "@/lib/rate-limit";
+import { TEMP_READING_ID } from "@/lib/types";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
@@ -15,23 +19,41 @@ const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
 // Feature flag for ADK backend
 const USE_ADK_BACKEND = process.env.USE_ADK_BACKEND === "true";
 
+const AnswerPromptSchema = z.object({
+    journalPrompt: z.string().min(1).max(1000),
+    isCustom: z.boolean().optional(),
+    readingId: z.string().min(1).max(64),
+    mode: z.enum(["normal", "stealth"]).optional(),
+    userInputs: z.object({
+        name: z.string().min(1).max(100),
+        birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        birthTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        birthCity: z.string().min(1).max(100),
+        focusArea: z.string().max(200).optional(),
+    }),
+});
+
 export async function POST(req: NextRequest) {
     try {
-        const body = await req.json();
-        const { journalPrompt, isCustom, userInputs, readingId, mode } = body;
+        const { data: { user } } = await (await createClient()).auth.getUser();
+        const limited = rateLimit(req, "answer-prompt", 20, 10 * 60_000, user?.id);
+        if (limited) return limited;
 
-        if (!journalPrompt) {
-            return NextResponse.json(
-                { error: "Journal prompt is required" },
-                { status: 400 }
-            );
+        const parsed = AnswerPromptSchema.safeParse(await req.json());
+        if (!parsed.success) {
+            return NextResponse.json({ error: "Invalid input" }, { status: 400 });
         }
+        const { journalPrompt, isCustom, userInputs, readingId, mode } = parsed.data;
 
-        if (!readingId) {
-            return NextResponse.json(
-                { error: "Reading ID is required" },
-                { status: 400 }
-            );
+        // Only the owner may attach answers to a saved reading
+        if (readingId !== TEMP_READING_ID) {
+            const owner = await getReadingOwner(readingId);
+            if (owner === undefined) {
+                return NextResponse.json({ error: "Reading not found" }, { status: 404 });
+            }
+            if (owner && owner !== user?.id) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
         }
 
         if (!OPENAI_API_KEY) {
