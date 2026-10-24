@@ -430,6 +430,7 @@ async function executeToolCall(
   toolName: string,
   toolArgs: Record<string, unknown>
 ): Promise<string> {
+  console.log(`[OpenAI] Tool call: ${toolName}`);
   try {
     switch (toolName) {
       case "calculate_numerology": {
@@ -498,7 +499,7 @@ export async function generateReading(
       model: OPENAI_MODEL,
       messages,
       tools,
-      tool_choice: "auto",
+      tool_choice: "required", // force grounding in calculated data, don't let the model skip the tools
       temperature: 0.2,
       top_p: 1,
     });
@@ -507,6 +508,11 @@ export async function generateReading(
 
     // Handle tool calls if present
     if (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0) {
+      const toolNames = assistantMessage.tool_calls
+        .filter((tc) => tc.type === "function")
+        .map((tc) => tc.function.name);
+      console.log(`[OpenAI] Tools used (normal mode): ${toolNames.join(", ")}`);
+
       // Add assistant's message with tool calls
       messages.push({
         role: "assistant",
@@ -540,10 +546,40 @@ export async function generateReading(
         messages,
         temperature: 0.2,
         top_p: 1,
-        response_format: { type: "json_object" },
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "reading_response",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                headline: { type: "string" },
+                coreTheme: { type: "string" },
+                strengths: { type: "array", items: { type: "string" } },
+                frictions: { type: "array", items: { type: "string" } },
+                next7Days: { type: "array", items: { type: "string" } },
+                journalPrompt: { type: "string" },
+                disclaimer: { type: "string" },
+              },
+              required: [
+                "headline",
+                "coreTheme",
+                "strengths",
+                "frictions",
+                "next7Days",
+                "journalPrompt",
+                "disclaimer",
+              ],
+              additionalProperties: false,
+            },
+          },
+        },
       });
 
       assistantMessage = completion.choices[0]?.message;
+    } else {
+      console.log("[OpenAI] No tools were called (normal mode)");
     }
 
     const content = assistantMessage?.content;
@@ -581,7 +617,7 @@ export async function generateStealthReading(
       model: OPENAI_MODEL,
       messages,
       tools,
-      tool_choice: "auto",
+      tool_choice: "required", // force grounding in calculated data, don't let the model skip the tools
       temperature: 0.3,
       top_p: 1,
     });
@@ -590,6 +626,11 @@ export async function generateStealthReading(
 
     // Handle tool calls if present
     if (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0) {
+      const toolNames = assistantMessage.tool_calls
+        .filter((tc) => tc.type === "function")
+        .map((tc) => tc.function.name);
+      console.log(`[OpenAI] Tools used (stealth mode): ${toolNames.join(", ")}`);
+
       messages.push({
         role: "assistant",
         content: assistantMessage.content || "",
@@ -619,10 +660,49 @@ export async function generateStealthReading(
         messages,
         temperature: 0.3,
         top_p: 1,
-        response_format: { type: "json_object" },
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "stealth_reading_response",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                whereYouveBeen: { type: "string" },
+                whereYouAre: { type: "string" },
+                direction: { type: "string" },
+                summary: {
+                  type: "object",
+                  properties: {
+                    dominantPattern: { type: "string" },
+                    careerWorkStyle: { type: "string" },
+                    decisionAlignment: { type: "string" },
+                  },
+                  required: [
+                    "dominantPattern",
+                    "careerWorkStyle",
+                    "decisionAlignment",
+                  ],
+                  additionalProperties: false,
+                },
+                closingNudge: { type: "string" },
+              },
+              required: [
+                "whereYouveBeen",
+                "whereYouAre",
+                "direction",
+                "summary",
+                "closingNudge",
+              ],
+              additionalProperties: false,
+            },
+          },
+        },
       });
 
       assistantMessage = completion.choices[0]?.message;
+    } else {
+      console.log("[OpenAI] No tools were called (stealth mode)");
     }
 
     const content = assistantMessage?.content;
