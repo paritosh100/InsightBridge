@@ -1,11 +1,10 @@
 /**
  * Vedic astrology calculation tools
- * Uses sweph-wasm (WebAssembly Swiss Ephemeris) for accurate astronomical data
- * Compatible with Next.js/Vercel serverless environment
+ * Uses sweph (native Node addon, prebuilt binaries) for accurate astronomical data
+ * Compatible with Next.js/Vercel serverless environment (linux-x64/arm64 prebuilds included)
  */
 
-import SwissEPH from 'sweph-wasm';
-import path from 'path';
+import sweph from 'sweph';
 
 export interface PlanetPosition {
     longitude: number;
@@ -84,49 +83,7 @@ const SE_SATURN = 6;
 const SE_MEAN_NODE = 11; // Rahu (North Node)
 
 // Flags
-const SEFLG_SWIEPH = 2; // Use Swiss Ephemeris
-
-// Initialize Swiss Ephemeris instance
-let sweph: Awaited<ReturnType<typeof SwissEPH.init>> | null = null;
-
-async function getSweph() {
-    if (!sweph) {
-        try {
-            // Provide explicit path to WASM file in public directory (Server-side compatible)
-            const wasmPath = path.join(process.cwd(), 'public', 'wasm', 'swisseph.wasm');
-
-            // Read as buffer to avoid fetch API issues in Node environment
-            // Use dynamic import to avoid bundling issues
-            const fs = await import('fs');
-
-            // Defensively check if file exists
-            if (!fs.existsSync(wasmPath)) {
-                console.error(`WASM file not found at: ${wasmPath}`);
-                throw new Error("WASM file missing");
-            }
-
-            const wasmBuffer = fs.readFileSync(wasmPath);
-
-            const wasmBinary = new Uint8Array(wasmBuffer);
-
-            // Initialize with Uint8Array
-            // Cast to any to bypass TS types that expect string/URL
-            const instance = await SwissEPH.init(wasmBinary as any);
-
-            if (instance) {
-                sweph = instance;
-                await sweph.swe_set_ephe_path(); // Initialize ephemeris path
-            } else {
-                throw new Error("SwissEPH.init returned null/undefined");
-            }
-        } catch (error) {
-            console.error("Failed to initialize Swiss Ephemeris WASM:", error);
-            // Verify if we can recover or if we should leave sweph as null
-            // Leaving as null will cause getSweph to try again or caller to handle it
-        }
-    }
-    return sweph;
-}
+const SEFLG_SWIEPH = 2; // Use Swiss Ephemeris (falls back to Moshier if data files are absent)
 
 /**
  * Get timezone offset for a city (simplified mapping)
@@ -171,19 +128,16 @@ export function getNakshatra(longitude: number): string {
 }
 
 /**
- * Calculate planetary positions using Swiss Ephemeris WebAssembly
+ * Calculate planetary positions using Swiss Ephemeris
  */
-export async function calculatePlanetaryPositions(
+export function calculatePlanetaryPositions(
     birthDate: string,
     birthTime: string,
     birthCity: string
-): Promise<Record<string, PlanetPosition>> {
+): Record<string, PlanetPosition> {
     const positions: Record<string, PlanetPosition> = {};
 
     try {
-        const swe = await getSweph();
-        if (!swe) throw new Error("SwissEPH not initialized");
-
         // Parse date and time
         const [year, month, day] = birthDate.split('-').map(Number);
         const [hour, minute] = birthTime.split(':').map(Number);
@@ -193,7 +147,7 @@ export async function calculatePlanetaryPositions(
         const utcHour = hour - tzOffset + minute / 60;
 
         // Calculate Julian Day
-        const jd = swe.swe_julday(year, month, day, utcHour, 1); // 1 = Gregorian calendar
+        const jd = sweph.julday(year, month, day, utcHour, 1); // 1 = Gregorian calendar
 
         // Planet IDs and names
         const planets = [
@@ -209,17 +163,14 @@ export async function calculatePlanetaryPositions(
 
         // Calculate each planet's position
         for (const planet of planets) {
-            const result = swe.swe_calc_ut(jd, planet.id, SEFLG_SWIEPH);
-
-            if (result && typeof result === 'object' && 'longitude' in result) {
-                const longitude = result.longitude as number;
-                const planetInfo = getZodiacInfo(longitude);
-                positions[planet.name] = {
-                    longitude,
-                    sign: planetInfo.sign,
-                    degreeInSign: planetInfo.degree,
-                };
-            }
+            const result = sweph.calc_ut(jd, planet.id, SEFLG_SWIEPH);
+            const longitude = result.data[0];
+            const planetInfo = getZodiacInfo(longitude);
+            positions[planet.name] = {
+                longitude,
+                sign: planetInfo.sign,
+                degreeInSign: planetInfo.degree,
+            };
         }
     } catch (error) {
         console.error('Error calculating planetary positions:', error);
@@ -229,19 +180,16 @@ export async function calculatePlanetaryPositions(
 }
 
 /**
- * Calculate Ascendant using Swiss Ephemeris WebAssembly
+ * Calculate Ascendant using Swiss Ephemeris
  */
-export async function calculateAscendant(
+export function calculateAscendant(
     birthDate: string,
     birthTime: string,
     birthCity: string,
     latitude: number = 40.7128,
     longitude: number = -74.006
-): Promise<AscendantInfo> {
+): AscendantInfo {
     try {
-        const swe = await getSweph();
-        if (!swe) throw new Error("SwissEPH not initialized");
-
         // Parse date and time
         const [year, month, day] = birthDate.split('-').map(Number);
         const [hour, minute] = birthTime.split(':').map(Number);
@@ -251,20 +199,18 @@ export async function calculateAscendant(
         const utcHour = hour - tzOffset + minute / 60;
 
         // Calculate Julian Day
-        const jd = swe.swe_julday(year, month, day, utcHour, 1);
+        const jd = sweph.julday(year, month, day, utcHour, 1);
 
         // Calculate houses (Placidus system = 'P')
-        const houses = swe.swe_houses(jd, latitude, longitude, 'P');
+        const houses = sweph.houses(jd, latitude, longitude, 'P');
+        const ascendantLon = houses.data.points[0]; // points[0] = Ascendant
+        const ascInfo = getZodiacInfo(ascendantLon);
 
-        if (houses && typeof houses === 'object' && 'ascendant' in houses) {
-            const ascendantLon = houses.ascendant as number;
-            const ascInfo = getZodiacInfo(ascendantLon);
-            return {
-                sign: ascInfo.sign,
-                degree: ascInfo.degree,
-                longitude: ascendantLon,
-            };
-        }
+        return {
+            sign: ascInfo.sign,
+            degree: ascInfo.degree,
+            longitude: ascendantLon,
+        };
     } catch (error) {
         console.error('Error calculating ascendant:', error);
     }
@@ -278,16 +224,16 @@ export async function calculateAscendant(
 }
 
 /**
- * Calculate complete birth chart using Swiss Ephemeris WebAssembly
+ * Calculate complete birth chart using Swiss Ephemeris
  */
-export async function calculateBirthChart(
+export function calculateBirthChart(
     birthDate: string,
     birthTime: string = '12:00',
     birthCity: string = 'New York'
-): Promise<BirthChart> {
+): BirthChart {
     // Calculate positions using Swiss Ephemeris
-    const planets = await calculatePlanetaryPositions(birthDate, birthTime, birthCity);
-    const ascendant = await calculateAscendant(birthDate, birthTime, birthCity);
+    const planets = calculatePlanetaryPositions(birthDate, birthTime, birthCity);
+    const ascendant = calculateAscendant(birthDate, birthTime, birthCity);
 
     // Get Moon's nakshatra
     const moonLongitude = planets['Moon']?.longitude || 0;
