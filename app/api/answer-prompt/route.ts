@@ -27,7 +27,7 @@ const AnswerPromptSchema = z.object({
     userInputs: z.object({
         name: z.string().min(1).max(100),
         birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        birthTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+        birthTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
         birthCity: z.string().min(1).max(100),
         focusArea: z.string().max(200).optional(),
     }),
@@ -41,7 +41,8 @@ export async function POST(req: NextRequest) {
 
         const parsed = AnswerPromptSchema.safeParse(await req.json());
         if (!parsed.success) {
-            return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+            console.error("[answer-prompt] Invalid input:", parsed.error.flatten());
+            return NextResponse.json({ error: "Invalid input", issues: parsed.error.flatten() }, { status: 400 });
         }
         const { journalPrompt, isCustom, userInputs, readingId, mode } = parsed.data;
 
