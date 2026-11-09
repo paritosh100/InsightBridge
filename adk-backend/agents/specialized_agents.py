@@ -11,6 +11,7 @@ from config.prompts import (
     CHINESE_ASTROLOGY_PROMPT,
     SYNTHESIS_PROMPT,
     REFINEMENT_PROMPT,
+    REFINEMENT_PROMPT_UNGUARDED,
     VALIDATOR_PROMPT
 )
 from config.settings import settings
@@ -21,6 +22,49 @@ from tools.chinese_astrology_tools import chinese_astrology_tool
 
 # Initialize Gemini client
 client = genai.Client(api_key=settings.google_api_key)
+
+
+def run_tool_grounded_analysis(
+    agent_config: Dict[str, Any],
+    prompt: str,
+    format_instruction: str,
+    temperature: float = 0.3
+) -> str:
+    """
+    Run a 2-call tool-grounded generation: Gemini cannot combine function
+    calling with response_mime_type="application/json" in one call, so the
+    real tool result is gathered first (automatic function calling), then
+    a second call formats that grounded analysis into strict JSON.
+
+    Args:
+        agent_config: Agent config dict with "model", "instructions", "tools"
+        prompt: The analysis request for the specialist agent
+        format_instruction: Instruction describing the target JSON schema
+        temperature: Sampling temperature for the grounded analysis call
+
+    Returns:
+        Raw JSON text from the format pass, for the caller to json.loads()
+    """
+    grounded = client.models.generate_content(
+        model=agent_config["model"],
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=agent_config["instructions"],
+            temperature=temperature,
+            tools=agent_config["tools"]
+        )
+    )
+
+    formatted = client.models.generate_content(
+        model=agent_config["model"],
+        contents=f"{format_instruction}\n\nGrounded analysis:\n{grounded.text}",
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            response_mime_type="application/json"
+        )
+    )
+
+    return formatted.text
 
 
 def create_vedic_agent() -> Dict[str, Any]:
@@ -66,12 +110,16 @@ def create_synthesis_agent() -> Dict[str, Any]:
     }
 
 
-def create_refinement_agent() -> Dict[str, Any]:
-    """Create response refinement agent configuration"""
+def create_refinement_agent(guardrails: bool = True) -> Dict[str, Any]:
+    """Create response refinement agent configuration.
+
+    DEV-ONLY: guardrails=False swaps in REFINEMENT_PROMPT_UNGUARDED, which
+    drops the language/tone/content rules and keeps only the output schema.
+    """
     return {
         "name": "response_refinement_agent",
         "model": settings.default_model,
-        "instructions": REFINEMENT_PROMPT,
+        "instructions": REFINEMENT_PROMPT if guardrails else REFINEMENT_PROMPT_UNGUARDED,
         "description": "Refines output to match Pellucid's tone and format"
     }
 
@@ -109,20 +157,23 @@ Focus Area: {user_data.get('focusArea', 'general life patterns')}
 
 Use the vedic_birth_chart_tool to calculate the birth chart, then provide your analysis.
 """
-    
-    # Generate response
-    response = client.models.generate_content(
-        model=agent_config["model"],
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=agent_config["instructions"],
-            temperature=0.3,
-            response_mime_type="application/json"
-        )
+
+    format_instruction = """Format the grounded analysis below into this exact JSON structure:
+{
+  "system": "vedic",
+  "key_themes": ["theme1", "theme2", "theme3"],
+  "strengths_indicated": ["strength1", "strength2"],
+  "areas_of_focus": ["area1", "area2"],
+  "notes": "Brief contextual notes"
+}
+Output ONLY valid JSON, no markdown, no commentary."""
+
+    response_text = run_tool_grounded_analysis(
+        agent_config, prompt, format_instruction, temperature=0.3
     )
-    
+
     try:
-        result = json.loads(response.text)
+        result = json.loads(response_text)
         return result
     except json.JSONDecodeError:
         # Fallback if JSON parsing fails
@@ -155,19 +206,24 @@ Focus Area: {user_data.get('focusArea', 'general life patterns')}
 
 Use the numerology_profile_tool to calculate the numerology profile, then provide your analysis.
 """
-    
-    response = client.models.generate_content(
-        model=agent_config["model"],
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=agent_config["instructions"],
-            temperature=0.3,
-            response_mime_type="application/json"
-        )
+
+    format_instruction = """Format the grounded analysis below into this exact JSON structure:
+{
+  "system": "numerology",
+  "life_path_number": 5,
+  "key_themes": ["theme1", "theme2"],
+  "strengths_indicated": ["strength1", "strength2"],
+  "patterns": ["pattern1", "pattern2"],
+  "notes": "Brief contextual notes"
+}
+Output ONLY valid JSON, no markdown, no commentary."""
+
+    response_text = run_tool_grounded_analysis(
+        agent_config, prompt, format_instruction, temperature=0.3
     )
-    
+
     try:
-        result = json.loads(response.text)
+        result = json.loads(response_text)
         return result
     except json.JSONDecodeError:
         return {
@@ -200,19 +256,24 @@ Focus Area: {user_data.get('focusArea', 'general life patterns')}
 
 Use the chinese_astrology_tool to calculate the Chinese astrology profile, then provide your analysis.
 """
-    
-    response = client.models.generate_content(
-        model=agent_config["model"],
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=agent_config["instructions"],
-            temperature=0.3,
-            response_mime_type="application/json"
-        )
+
+    format_instruction = """Format the grounded analysis below into this exact JSON structure:
+{
+  "system": "chinese",
+  "zodiac_sign": "Dragon",
+  "element": "Wood",
+  "key_themes": ["theme1", "theme2"],
+  "strengths_indicated": ["strength1", "strength2"],
+  "notes": "Brief contextual notes"
+}
+Output ONLY valid JSON, no markdown, no commentary."""
+
+    response_text = run_tool_grounded_analysis(
+        agent_config, prompt, format_instruction, temperature=0.3
     )
-    
+
     try:
-        result = json.loads(response.text)
+        result = json.loads(response_text)
         return result
     except json.JSONDecodeError:
         return {
@@ -280,18 +341,25 @@ Identify convergent themes, divergent perspectives, and meta-patterns.
         }
 
 
-async def run_refinement(synthesis_result: Dict, user_data: Dict) -> Dict:
+async def run_refinement(
+    synthesis_result: Dict,
+    user_data: Dict,
+    guardrails: bool = True,
+    max_tokens: int = None
+) -> Dict:
     """
     Refine synthesis into final Pellucid format
-    
+
     Args:
         synthesis_result: Synthesized insights
         user_data: Original user data
-    
+        guardrails: DEV-ONLY — False strips language/tone/content rules
+        max_tokens: DEV-ONLY — caps max_output_tokens for this call
+
     Returns:
         Final reading in Pellucid format
     """
-    agent_config = create_refinement_agent()
+    agent_config = create_refinement_agent(guardrails)
     
     prompt = f"""Create the final reading based on this synthesis:
 
@@ -303,16 +371,17 @@ Name: {user_data['name']}
 Focus Area: {user_data.get('focusArea', 'general patterns')}
 
 Generate the final reading in the exact JSON format specified in your instructions.
-Remember to include a "quiet mirror line" in the coreTheme that normalizes their experience.
+{'Remember to include a "quiet mirror line" in the coreTheme that normalizes their experience.' if guardrails else ''}
 """
-    
+
     response = client.models.generate_content(
         model=agent_config["model"],
         contents=prompt,
         config=types.GenerateContentConfig(
             system_instruction=agent_config["instructions"],
-            temperature=0.5,
-            response_mime_type="application/json"
+            temperature=0.5 if guardrails else 0.8,
+            response_mime_type="application/json",
+            max_output_tokens=max_tokens
         )
     )
     

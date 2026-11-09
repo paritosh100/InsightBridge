@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     
     # Models
-    default_model: str = "gemini-2.0-flash-exp"
-    premium_model: str = "gemini-2.0-flash-exp"  # Use Flash for all agents (cheapest)
+    default_model: str = "gemini-3.1-flash-lite"
+    premium_model: str = "gemini-3.1-flash-lite"  # Use Flash for all agents (cheapest)
     
     # API Configuration
     api_host: str = "0.0.0.0"

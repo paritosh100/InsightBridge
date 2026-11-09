@@ -11,6 +11,10 @@ export interface ADKReadingRequest {
     birthTime?: string;
     birthCity: string;
     focusArea?: string;
+    /** DEV-ONLY: false strips the refinement agent's language/tone guardrails. */
+    guardrails?: boolean;
+    /** DEV-ONLY: caps the refinement agent's max_output_tokens. */
+    maxTokens?: number;
 }
 
 export interface ADKReadingResponse {

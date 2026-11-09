@@ -205,6 +205,36 @@ No explanations`
 }
 
 /**
+ * DEV-ONLY: system prompt with the language/tone/content guardrails stripped,
+ * keeping only the output schema. Used solely by the /dev/compare tool to
+ * A/B test guardrail impact. Never used by the real product endpoints.
+ */
+function buildUngaurdedSystemPrompt(): string {
+  return `You are an astrology, numerology, and Chinese zodiac reading generator.
+Give a direct, specific reading grounded in the calculated data for the focus area provided.
+Be as specific and direct as the data allows. Speak plainly — do not hedge every sentence, do not add disclaimers beyond the single required field below.
+
+How to Use Astrology & Pattern Systems
+ALWAYS call these tools first before generating insights to get accurate data.
+Use the calculate_numerology tool to get Life Path, Expression, and Soul Urge numbers.
+Use the calculate_chinese_astrology tool to get zodiac sign, element, and yin/yang.
+Use the calculate_birth_chart tool (if birth time is provided) to get planetary positions and nakshatra.
+
+Output Format (STRICT)
+Return ONLY valid JSON with the keys below. No markdown. No commentary.
+
+{
+  "headline": "string – 3–4 words max",
+  "coreTheme": "string – 3–4 sentences",
+  "strengths": ["exactly 3 strings"],
+  "frictions": ["exactly 2 strings"],
+  "next7Days": ["exactly 3 strings"],
+  "journalPrompt": "one career-focused question",
+  "disclaimer": "one short sentence"
+}`;
+}
+
+/**
  * Build the stealth mode system prompt — pattern-based reflection with no astrological language
  */
 export function buildStealthSystemPrompt(): string {
@@ -593,6 +623,93 @@ export async function generateReading(
     console.error("OpenAI API error:", error);
     throw error;
   }
+}
+
+/**
+ * DEV-ONLY: same tool-calling flow as generateReading, but with the
+ * language/tone/content guardrails stripped from the system prompt and a
+ * hard max_tokens cap on both calls so the A/B stays token-controlled.
+ * Only reachable via the /dev/compare internal tool.
+ */
+export async function generateReadingUnguarded(
+  inputs: UserInput,
+  maxTokens: number = 500
+): Promise<ReadingResponse> {
+  const systemPrompt = buildUngaurdedSystemPrompt();
+  const userPrompt = buildUserPrompt(inputs);
+  const openai = getOpenAIClient();
+  const tools = getCalculationTools();
+
+  let messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
+
+  let completion = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    messages,
+    tools,
+    tool_choice: "required",
+    temperature: 0.7,
+    top_p: 1,
+    max_tokens: maxTokens,
+  });
+
+  let assistantMessage = completion.choices[0]?.message;
+
+  if (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0) {
+    messages.push({
+      role: "assistant",
+      content: assistantMessage.content || "",
+      tool_calls: assistantMessage.tool_calls,
+    });
+
+    for (const toolCall of assistantMessage.tool_calls) {
+      if (toolCall.type === "function") {
+        const toolResult = await executeToolCall(
+          toolCall.function.name,
+          JSON.parse(toolCall.function.arguments)
+        );
+        messages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult });
+      }
+    }
+
+    completion = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages,
+      temperature: 0.7,
+      top_p: 1,
+      max_tokens: maxTokens,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "reading_response",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              headline: { type: "string" },
+              coreTheme: { type: "string" },
+              strengths: { type: "array", items: { type: "string" } },
+              frictions: { type: "array", items: { type: "string" } },
+              next7Days: { type: "array", items: { type: "string" } },
+              journalPrompt: { type: "string" },
+              disclaimer: { type: "string" },
+            },
+            required: ["headline", "coreTheme", "strengths", "frictions", "next7Days", "journalPrompt", "disclaimer"],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
+
+    assistantMessage = completion.choices[0]?.message;
+  }
+
+  const content = assistantMessage?.content;
+  if (!content) throw new Error("No content in OpenAI response (unguarded)");
+
+  return parseJsonResponse(content);
 }
 
 /**

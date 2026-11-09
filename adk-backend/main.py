@@ -3,6 +3,7 @@ FastAPI application for ADK backend
 """
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import logging
@@ -41,7 +42,9 @@ class ReadingRequest(BaseModel):
     birthTime: Optional[str] = Field(None, description="Birth time in HH:MM format (24-hour)")
     birthCity: str = Field(..., description="City of birth")
     focusArea: Optional[str] = Field(None, description="Current focus area or question")
-    
+    guardrails: Optional[bool] = Field(True, description="DEV-ONLY: false strips refinement agent's language/tone rules and skips the validator loop")
+    maxTokens: Optional[int] = Field(None, description="DEV-ONLY: caps the refinement agent's max_output_tokens")
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -124,11 +127,15 @@ async def generate_reading(request: ReadingRequest):
     try:
         logger.info(f"Generating reading for {request.name}")
         
-        # Convert request to dict
-        user_data = request.model_dump()
-        
+        # Convert request to dict (drop dev-only fields from the birth-data dict)
+        user_data = request.model_dump(exclude={"guardrails", "maxTokens"})
+
         # Run multi-agent workflow
-        result = await run_reading_workflow(user_data)
+        result = await run_reading_workflow(
+            user_data,
+            guardrails=request.guardrails,
+            max_tokens=request.maxTokens
+        )
         
         logger.info(f"Reading generated successfully for {request.name}")
         
@@ -174,20 +181,26 @@ async def answer_journal_prompt(request: JournalAnswerRequest):
 # Error handlers
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
-    return {
-        "error": "Not Found",
-        "message": "The requested endpoint does not exist",
-        "path": str(request.url)
-    }
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Not Found",
+            "message": "The requested endpoint does not exist",
+            "path": str(request.url)
+        }
+    )
 
 
 @app.exception_handler(500)
 async def internal_error_handler(request, exc):
     logger.error(f"Internal server error: {exc}", exc_info=True)
-    return {
-        "error": "Internal Server Error",
-        "message": "An unexpected error occurred"
-    }
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred"
+        }
+    )
 
 
 if __name__ == "__main__":

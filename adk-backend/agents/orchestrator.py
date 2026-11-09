@@ -13,10 +13,14 @@ from agents.specialized_agents import (
 )
 
 
-async def run_reading_workflow(user_data: Dict[str, str]) -> Dict:
+async def run_reading_workflow(
+    user_data: Dict[str, str],
+    guardrails: bool = True,
+    max_tokens: int = None
+) -> Dict:
     """
     Main orchestrator function that coordinates all agents
-    
+
     Args:
         user_data: Dictionary with user birth data
             - name: str
@@ -24,7 +28,12 @@ async def run_reading_workflow(user_data: Dict[str, str]) -> Dict:
             - birthTime: str (HH:MM, optional)
             - birthCity: str
             - focusArea: str (optional)
-    
+        guardrails: DEV-ONLY — False strips the refinement agent's
+            language/tone/content rules and skips the validator loop
+            (validating against rules that were intentionally disabled
+            would just force a refinement loop back toward them)
+        max_tokens: DEV-ONLY — caps the refinement agent's max_output_tokens
+
     Returns:
         Final reading in Pellucid format
     """
@@ -88,35 +97,43 @@ async def run_reading_workflow(user_data: Dict[str, str]) -> Dict:
         print(f"  - Synthesis: Complete")
     
     # Phase 3: Refine into final format (with potential loop)
-    max_refinement_attempts = 2
-    refined_result = None
-    
-    for attempt in range(max_refinement_attempts):
-        print(f"\n✨ Phase 3: Refining response (attempt {attempt + 1}/{max_refinement_attempts})...")
-        
-        refined_result = await run_refinement(synthesis_result, user_data)
-        
-        print("✅ Refinement completed")
-        
-        # Phase 4: Validate quality
-        print("\n🔍 Phase 4: Validating quality...")
-        validation_result = await run_validation(refined_result)
-        
-        if validation_result.get("is_valid", True):
-            print("✅ Validation passed!")
-            break
-        else:
-            print(f"⚠️  Validation issues found: {validation_result.get('issues', [])}")
-            if attempt < max_refinement_attempts - 1:
-                print("🔄 Re-refining...")
+    if not guardrails:
+        # DEV-ONLY: guardrails off — one refinement call, no validator loop
+        # (the validator checks for the exact rules we just disabled)
+        print("\n✨ Phase 3: Refining response (guardrails OFF, single pass)...")
+        refined_result = await run_refinement(synthesis_result, user_data, guardrails=False, max_tokens=max_tokens)
+        print("✅ Refinement completed (unguarded)")
+    else:
+        max_refinement_attempts = 2
+        refined_result = None
+
+        for attempt in range(max_refinement_attempts):
+            print(f"\n✨ Phase 3: Refining response (attempt {attempt + 1}/{max_refinement_attempts})...")
+
+            refined_result = await run_refinement(synthesis_result, user_data, guardrails=True, max_tokens=max_tokens)
+
+            print("✅ Refinement completed")
+
+            # Phase 4: Validate quality
+            print("\n🔍 Phase 4: Validating quality...")
+            validation_result = await run_validation(refined_result)
+
+            if validation_result.get("is_valid", True):
+                print("✅ Validation passed!")
+                break
             else:
-                print("⚠️  Max attempts reached, using current version")
-    
+                print(f"⚠️  Validation issues found: {validation_result.get('issues', [])}")
+                if attempt < max_refinement_attempts - 1:
+                    print("🔄 Re-refining...")
+                else:
+                    print("⚠️  Max attempts reached, using current version")
+
     # Add metadata
     refined_result["_metadata"] = {
         "systems_analyzed": ["vedic", "numerology", "chinese"],
-        "model_used": "gemini-2.0-flash-exp",
-        "workflow": "multi-agent-synthesis"
+        "model_used": "gemini-3.1-flash-lite",
+        "workflow": "multi-agent-synthesis",
+        "guardrails": guardrails
     }
     
     print("\n🎉 Reading generation complete!\n")
